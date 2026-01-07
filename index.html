@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MazeMind 2D - Ultimate Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        :root { --card-bg: rgba(17,24,39,0.86); --muted: #94a3b8; }
+        body { font-family: 'Inter', sans-serif; background:#0b1220; color:#e6eef8; margin:0; overflow:hidden; }
+        .hidden { display: none !important; }
+        #bg-canvas, #game-canvas, #sprite-canvas { image-rendering: pixelated; image-rendering: crisp-edges; display:block; }
+        #bg-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .card { background: var(--card-bg); border:1px solid rgba(71,85,105,.35); backdrop-filter: blur(10px); border-radius:14px; box-shadow: 0 10px 30px rgba(2,6,23,0.6); }
+        .tilt { transform-style: preserve-3d; perspective: 1200px; }
+        .card-3d { transition: transform .35s cubic-bezier(.2,.9,.3,1); transform: translateZ(0px) rotateX(0deg) rotateY(0deg); }
+        .hud:hover .card-3d { transform: rotateX(3deg) rotateY(-6deg) translateZ(6px); }
+        
+        .hud {
+            max-height: calc(100vh - 3rem); 
+            overflow-y: auto; 
+            padding-right: 8px;
+        }
+        .hud::-webkit-scrollbar {
+            width: 8px;
+        }
+        .hud::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .hud::-webkit-scrollbar-thumb {
+            background-color: #475569;
+            border-radius: 10px;
+            border: 2px solid var(--card-bg);
+        }
+        .hud::-webkit-scrollbar-thumb:hover {
+            background-color: #64748b;
+        }
+
+        select:disabled, input[type="range"]:disabled, input[type="checkbox"]:disabled { background-color: #475569; cursor: not-allowed; opacity: 0.6; }
+        button:disabled { background-color: #475569; cursor: not-allowed; opacity: 0.6; }
+        kbd {
+            background-color: #e5e7eb;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            color: #1f2937;
+            font-size: .8em;
+            font-weight: 600;
+            padding: 4px 6px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200">
+    <canvas id="bg-canvas"></canvas>
+
+    <div id="app-container" class="flex items-center justify-center min-h-screen w-full p-4">
+
+        <div id="login-page" class="w-full max-w-md p-8 space-y-6 rounded-xl shadow-2xl card">
+            <div class="text-center">
+                <h1 class="text-3xl font-bold tracking-tight text-white">MazeMind 2D</h1>
+                <p class="mt-2 text-slate-400">The Ultimate AI Maze Challenge</p>
+            </div>
+            <button type="button" id="login-button" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 focus:ring-offset-slate-900 transition-colors duration-200">
+                Enter Simulator
+            </button>
+        </div>
+
+        <div id="instructions-page" class="hidden w-full max-w-xl p-8 space-y-6 rounded-xl shadow-2xl card">
+             <div class="text-center">
+                 <h1 class="text-3xl font-bold tracking-tight text-white">How It Works</h1>
+                 <p class="mt-2 text-slate-400">Welcome to the Adaptive Maze!</p>
+             </div>
+             <div class="text-left text-slate-300 space-y-4">
+                 <p><strong>The Goal:</strong> Navigate your robot from the start to the exit (blinking door).</p>
+                 <div class="p-4 rounded-lg bg-slate-800 border border-slate-700 space-y-3">
+                     <h3 class="font-bold text-white">⚠️ The Twist: A Dynamic Environment</h3>
+                     <p class="text-sm">This maze is controlled by a "Dungeon Master" AI. It learns your strategy, blocks your path, and creates new routes to trick you. Perform well, and it will place traps to increase the challenge.</p>
+                 </div>
+                 <div class="p-4 rounded-lg bg-slate-800 border border-slate-700">
+                     <h3 class="font-bold text-white">🤖 Control Modes</h3>
+                     <ul class="list-disc list-inside space-y-2 pl-2 mt-2 text-sm">
+                         <li><strong>Human Player:</strong> Control the robot with <kbd>Arrow Keys</kbd>. The Dungeon Master AI adapts the difficulty against you.</li>
+                         <li><strong>A* Solver:</strong> Watch the classic A* pathfinding algorithm calculate and execute the optimal path.</li>
+                         <li><strong>AI Explorer:</strong> An autonomous agent that uses its own memory to explore and solve the shifting maze.</li>
+                         <li><strong>Fog of War:</strong> Enable this to simulate limited sensors for a true exploration challenge.</li>
+                     </ul>
+                 </div>
+             </div>
+             <button type="button" id="start-game-button" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 focus:ring-offset-slate-900 transition-colors duration-200">
+                 I'm Ready, Start Game!
+             </button>
+        </div>
+
+        <div id="game-page" class="hidden w-full max-w-7xl">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div id="game-area" class="lg:col-span-2 card tilt p-4 card-3d relative" style="min-height:520px; overflow:hidden;">
+                    <div id="canvas-wrapper" style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+                        <canvas id="game-canvas" style="position:absolute; z-index:1;"></canvas>
+                        <div id="pause-overlay" class="hidden absolute inset-0 flex items-center justify-center z-10 text-white cursor-pointer" style="background:rgba(2,6,23,0.6);backdrop-filter: blur(3px);">
+                            <div class="text-center">
+                                <h2 class="text-4xl font-bold">Paused</h2>
+                                <p class="mt-2 text-sm text-gray-300">Click or press <kbd>Esc</kbd> to resume</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-6 hud">
+                    <div class="card card-3d p-5">
+                        <h3 class="text-lg font-semibold text-white border-b border-slate-700 pb-3 mb-4">Live Metrics</h3>
+                        <div class="text-sm text--muted space-y-2">
+                            <div class="flex justify-between"><span>Level:</span><span id="level-stat" class="font-mono">1</span></div>
+                            <div class="flex justify-between"><span>Difficulty:</span><span id="difficulty-stat" class="font-mono text-fuchsia-400">Medium</span></div>
+                            <div class="flex justify-between"><span>Time:</span><span id="time-stat" class="font-mono">0s</span></div>
+                            <div class="flex justify-between"><span>Moves:</span><span id="moves-stat" class="font-mono">0</span></div>
+                            <div class="flex justify-between"><span>Coins:</span><span id="coins-stat" class="font-mono text-amber-400">0</span></div>
+                            <div id="shifts-stat-wrapper" class="flex justify-between"><span>Moves Until Shift:</span><span id="shifts-stat" class="font-mono text-amber-400">10</span></div>
+                            <div class="flex justify-between"><span>Traps Active:</span><span id="traps-stat" class="font-mono text-red-400">0</span></div>
+                             <div class="flex justify-between"><span>Status:</span><span id="action-stat" class="font-mono text-slate-300">Initializing</span></div>
+                        </div>
+                    </div>
+                    <div class="card card-3d p-5">
+                        <h3 class="text-lg font-semibold text-white border-b border-slate-700 pb-3 mb-4">Controls & Visuals</h3>
+                        <div class="mt-3 text-sm space-y-4">
+                             <label class="block"><span class="text-xs text-slate-300">Agent Controller</span>
+                                 <select id="game-mode-select" class="mt-1 w-full bg-slate-800 border border-slate-600 text-white rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-colors">
+                                     <option value="human">Human Player</option>
+                                     <option value="solver">A* Solver</option>
+                                     <option value="explorer">AI Explorer</option>
+                                 </select>
+                             </label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="block"><span class="text-xs text-slate-300">Maze Type</span>
+                                    <select id="maze-type-select" class="mt-1 w-full bg-slate-800 border border-slate-600 text-white rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-colors">
+                                        <option value="scattered">Scattered</option>
+                                        <option value="closed">Closed</option>
+                                    </select>
+                                </label>
+                                <label class="block"><span class="text-xs text-slate-300">Environment</span>
+                                    <select id="env-mode-select" class="mt-1 w-full bg-slate-800 border border-slate-600 text-white rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-colors">
+                                        <option value="dynamic">Dynamic</option>
+                                        <option value="static">Static</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <label class="flex items-center space-x-3 cursor-pointer">
+                                <input id="fog-toggle" type="checkbox" class="h-4 w-4 rounded bg-slate-700 border-slate-500 text-sky-500 focus:ring-sky-500" />
+                                <span>Enable Fog of War</span>
+                            </label>
+                             <label class="block">
+                                 <div class="flex justify-between text-xs text-slate-300"><span>Pixel Size</span><span id="pixel-size-value">24px</span></div>
+                                 <input id="pixel-scale" type="range" min="12" max="40" value="24" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                             </label>
+                             <div class="grid grid-cols-3 gap-2 pt-2">
+                                 <button id="menu-btn" class="p-2 bg-slate-700 hover:bg-slate-600 rounded transition-colors">Menu</button>
+                                 <button id="pause-btn" class="p-2 bg-sky-700 hover:bg-sky-600 rounded transition-colors">Pause</button>
+                                 <button id="reset-ai-btn" class="p-2 bg-amber-700 hover:bg-amber-600 rounded transition-colors">Reset AI</button>
+                             </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card card-3d p-5">
+                        <h3 class="text-lg font-semibold text-white border-b border-slate-700 pb-3 mb-4">--- Maze Master AI ---</h3>
+                        <div id="q-table-display" class="text-sm text--muted space-y-3">
+                            <div>
+                                <p class="font-mono text-slate-300">State: <span class="font-bold">Fast</span> (Too Easy)</p>
+                                <div class="pl-4 text-xs space-y-1 mt-1">
+                                    <div class="flex justify-between"><span>Inc Diff:</span><span id="q-fast-increase" class="font-mono text-emerald-400">0.00</span></div>
+                                    <div class="flex justify-between"><span>Keep:</span><span id="q-fast-keep" class="font-mono text-slate-400">0.00</span></div>
+                                    <div class="flex justify-between"><span>Dec Diff:</span><span id="q-fast-decrease" class="font-mono text-red-400">0.00</span></div>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="font-mono text-slate-300">State: <span class="font-bold">Medium</span></p>
+                                <div class="pl-4 text-xs space-y-1 mt-1">
+                                    <div class="flex justify-between"><span>Inc Diff:</span><span id="q-medium-increase" class="font-mono text-emerald-400">0.00</span></div>
+                                    <div class="flex justify-between"><span>Keep:</span><span id="q-medium-keep" class="font-mono text-slate-400">0.00</span></div>
+                                    <div class="flex justify-between"><span>Dec Diff:</span><span id="q-medium-decrease" class="font-mono text-red-400">0.00</span></div>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="font-mono text-slate-300">State: <span class="font-bold">Slow</span> (Too Hard)</p>
+                                <div class="pl-4 text-xs space-y-1 mt-1">
+                                    <div class="flex justify-between"><span>Inc Diff:</span><span id="q-slow-increase" class="font-mono text-emerald-400">0.00</span></div>
+                                    <div class="flex justify-between"><span>Keep:</span><span id="q-slow-keep" class="font-mono text-slate-400">0.00</span></div>
+                                    <div class="flex justify-between"><span>Dec Diff:</span><span id="q-slow-decrease" class="font-mono text-red-400">0.00</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- CONFIG & GAME STATE ---
+    const MAZE_SIZE = 21;
+    const TILES = { EMPTY: 0, WALL: 1, EXIT: 2, COIN: 3, TRAP: 4, START: 5 };
+    const DEFAULT_SHIFT_INTERVAL = 10;
+    const difficultyNames = ["Easy", "Medium", "Hard"];
+    
+    let CELL = 24, maze = [], player_pos = [1, 1];
+    let level = 1, moves = 0, coinsCollected = 0, wallCollisions = 0, trapFalls = 0;
+    let startTime = 0, timePaused = 0, movesUntilShift = DEFAULT_SHIFT_INTERVAL, currentShiftInterval = DEFAULT_SHIFT_INTERVAL;
+    let gameState = 'stopped', animationFrameId, gameMode = 'human', isFog = false;
+    let mazeType = 'scattered', envMode = 'dynamic';
+    let difficultyLevel = 1; // 0: Easy, 1: Medium, 2: Hard
+    let visibilityGrid = [], traps = [], solvedPath = [], pathIndex = 0;
+    const keysPressed = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+    let playerImage = null;
+    let mercyTriggered = false; 
+
+    // --- DOM ELEMENTS ---
+    const [bgCanvas, gameCanvas] = [document.getElementById('bg-canvas'), document.getElementById('game-canvas')];
+    const gameCtx = gameCanvas.getContext('2d');
+    const [loginPage, instructionsPage, gamePage] = [document.getElementById('login-page'), document.getElementById('instructions-page'), document.getElementById('game-page')];
+    const [loginButton, startGameButton, menuBtn, pauseBtn, resetAiBtn] = [document.getElementById('login-button'), document.getElementById('start-game-button'), document.getElementById('menu-btn'), document.getElementById('pause-btn'), document.getElementById('reset-ai-btn')];
+    const [pauseOverlay, gameModeSelect, fogToggle, pixelScale, pixelSizeValue] = [document.getElementById('pause-overlay'), document.getElementById('game-mode-select'), document.getElementById('fog-toggle'), document.getElementById('pixel-scale'), document.getElementById('pixel-size-value')];
+    const [mazeTypeSelect, envModeSelect] = [document.getElementById('maze-type-select'), document.getElementById('env-mode-select')];
+    const [levelStat, timeStat, movesStat, coinsStat, shiftsStat, trapsStat, actionStat, difficultyStat] = [document.getElementById('level-stat'), document.getElementById('time-stat'), document.getElementById('moves-stat'), document.getElementById('coins-stat'), document.getElementById('shifts-stat'), document.getElementById('traps-stat'), document.getElementById('action-stat'), document.getElementById('difficulty-stat')];
+    const shiftsStatWrapper = document.getElementById('shifts-stat-wrapper');
+    const qTableDisplay = {
+        0: {0: document.getElementById('q-fast-increase'), 1: document.getElementById('q-fast-keep'), 2: document.getElementById('q-fast-decrease')},
+        1: {0: document.getElementById('q-medium-increase'), 1: document.getElementById('q-medium-keep'), 2: document.getElementById('q-medium-decrease')},
+        2: {0: document.getElementById('q-slow-increase'), 1: document.getElementById('q-slow-keep'), 2: document.getElementById('q-slow-decrease')}
+    };
+
+    function setControlsEnabled(enabled) {
+        fogToggle.disabled = !enabled;
+        pixelScale.disabled = !enabled;
+        resetAiBtn.disabled = !enabled;
+        gameModeSelect.disabled = false;
+        mazeTypeSelect.disabled = false;
+        envModeSelect.disabled = false;
+        menuBtn.disabled = false;
+        pauseBtn.disabled = !enabled;
+    }
+
+    // --- AI EXPLORER AGENT STATE ---
+    let aiMemoryGrid = [], aiTarget = null, aiVisitCounts = [];
+
+    // --- DUNGEON MASTER AI (Q-Learning) ---
+    // States: 0=Fast(Easy), 1=Medium, 2=Slow(Hard) | Actions: 0=Increase Diff, 1=Keep, 2=Decrease Diff
+    const AI_STATES = ["Fast", "Medium", "Slow"], AI_ACTIONS = ["Increase", "Keep", "Decrease"];
+    let Q_TABLE, prev_state = null, prev_action = null;
+    
+    function loadQTable() { try { const savedQ = localStorage.getItem('mazeMindQTable'); Q_TABLE = savedQ ? JSON.parse(savedQ) : getDefaultQTable(); } catch (e) { Q_TABLE = getDefaultQTable(); } }
+    function getDefaultQTable() { 
+        return [
+            [2.0, 0.5, -1.0], // Fast: Prefer Increase
+            [0.5, 2.0, 0.5],  // Medium: Prefer Keep
+            [-1.0, 0.5, 2.0]  // Slow: Prefer Decrease
+        ];
+    }
+    function saveQTable() { localStorage.setItem('mazeMindQTable', JSON.stringify(Q_TABLE)); }
+    function resetQTable() { if(confirm("Reset AI memory? This will return the Dungeon Master to factory settings.")){ Q_TABLE = getDefaultQTable(); difficultyLevel = 1; saveQTable(); updateQTableDisplay(); alert("AI Memory Reset!"); } }
+    
+    function updateQTableDisplay() {
+        if (!Q_TABLE) return;
+        const format = (val) => val.toFixed(2);
+        for(let s=0; s<3; s++) for(let a=0; a<3; a++) qTableDisplay[s][a].textContent = format(Q_TABLE[s][a]);
+    }
+
+    function evaluatePerformance(time) {
+        // Fast < 30s
+        // Medium 30s - 60s
+        // Slow > 60s (User asked for mercy at 1 min)
+        if (mercyTriggered || time > 60) return 2; // Slow
+        if (time < 30) return 0; // Fast
+        return 1; // Medium
+    }
+    
+    function updateQ(pState, pAction, state, reward) {
+        if(pState === null) return;
+        const alpha = 0.5; const gamma = 0.8;
+        const oldVal = Q_TABLE[pState][pAction];
+        const nextMax = Math.max(...Q_TABLE[state]);
+        Q_TABLE[pState][pAction] = oldVal + alpha * (reward + gamma * nextMax - oldVal);
+    }
+
+    // --- PATHFINDING & SOLVABILITY CHECKS ---
+    async function findPathAStar(grid, start, end, treatNullAsEmpty = false, useVisitCosts = false) {
+        class Node { constructor(p, pos) { this.parent=p; this.pos=pos; this.g=0; this.h=0; this.f=0; } }
+        const startNode = new Node(null, start);
+        const endNode = new Node(null, end);
+        let openList = [startNode], closedSet = new Set();
+        let iters = 0;
+
+        while (openList.length > 0) {
+            if (++iters % 200 === 0) await new Promise(r => setTimeout(r, 0));
+            let lowest = 0;
+            for (let i = 1; i < openList.length; i++) if (openList[i].f < openList[lowest].f) lowest = i;
+            let current = openList.splice(lowest, 1)[0];
+            
+            if (current.pos[0] === endNode.pos[0] && current.pos[1] === endNode.pos[1]) {
+                let path = []; let curr = current;
+                while (curr) { path.push(curr.pos); curr = curr.parent; }
+                return path.reverse();
+            }
+
+            closedSet.add(`${current.pos[0]},${current.pos[1]}`);
+            const neighbors = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+            for (const d of neighbors) {
+                const nr = current.pos[0] + d[0], nc = current.pos[1] + d[1];
+                if (nr < 0 || nr >= grid.length || nc < 0 || nc >= grid[0].length) continue;
+                if (closedSet.has(`${nr},${nc}`)) continue;
+                const tile = grid[nr][nc];
+                let isWalkable = false;
+                if (treatNullAsEmpty && tile === null) isWalkable = true;
+                else if (tile !== TILES.WALL && tile !== TILES.TRAP && tile !== null) isWalkable = true;
+                if (tile === TILES.TRAP) isWalkable = false; 
+                if (!isWalkable) continue;
+                
+                let neighbor = new Node(current, [nr, nc]);
+                // Intelligent AI Cost Calculation:
+                // Base cost is 1. If using visit costs, add penalty for repeatedly visited tiles.
+                // This simulates "checking paths again and again" but preferring new ones.
+                let stepCost = 1;
+                if (useVisitCosts && aiVisitCounts[nr] && aiVisitCounts[nr][nc]) {
+                    stepCost += (aiVisitCounts[nr][nc] * 10); // High penalty for re-visiting
+                }
+
+                neighbor.g = current.g + stepCost;
+                neighbor.h = Math.abs(neighbor.pos[0] - endNode.pos[0]) + Math.abs(neighbor.pos[1] - endNode.pos[1]);
+                neighbor.f = neighbor.g + neighbor.h;
+                const existingNode = openList.find(n => n.pos[0] === nr && n.pos[1] === nc);
+                if (existingNode && neighbor.g >= existingNode.g) continue;
+                openList.push(neighbor);
+            }
+        }
+        return null;
+    }
+
+    function getReachableSet(grid, start) {
+        const visited = new Set();
+        const queue = [start];
+        visited.add(`${start[0]},${start[1]}`);
+        while (queue.length > 0) {
+            const [r, c] = queue.shift();
+            [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr, dc]) => {
+                const nr=r+dr, nc=c+dc;
+                if(nr>=0 && nr<MAZE_SIZE && nc>=0 && nc<MAZE_SIZE && grid[nr][nc]!==TILES.WALL && grid[nr][nc]!==TILES.TRAP && !visited.has(`${nr},${nc}`)) {
+                    visited.add(`${nr},${nc}`);
+                    queue.push([nr,nc]);
+                }
+            });
+        }
+        return visited;
+    }
+
+    function isSafePathPossible(grid, start, end) {
+        const reachable = getReachableSet(grid, start);
+        return reachable.has(`${end[0]},${end[1]}`);
+    }
+
+    // --- ROBUST MAZE GENERATION ---
+    function generateMaze(rows, cols) {
+        let wallDensity, loopChance, baseTrapCount, baseCoinCount;
+        switch (difficultyLevel) {
+            case 0: wallDensity = 0.15; loopChance = 0.30; baseTrapCount = 0; baseCoinCount = 12; break; // Easy
+            case 2: wallDensity = 0.35; loopChance = 0.05; baseTrapCount = 6; baseCoinCount = 4; break; // Hard
+            case 1: default: wallDensity = 0.25; loopChance = 0.15; baseTrapCount = 3; baseCoinCount = 8; break; // Medium
+        }
+
+        while (true) {
+            let grid;
+            if (mazeType === 'scattered') {
+                grid = Array(rows).fill(0).map(() => Array(cols).fill(TILES.EMPTY));
+                for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) 
+                    if (r===0||c===0||r===rows-1||c===cols-1) grid[r][c] = TILES.WALL;
+                const innerCells = (rows - 2) * (cols - 2);
+                for (let i = 0; i < Math.floor(innerCells * wallDensity); i++) {
+                    const r = Math.floor(Math.random()*(rows-2))+1, c = Math.floor(Math.random()*(cols-2))+1;
+                    if ((r > 1 || c > 1) && (r < rows - 2 || c < cols - 2)) grid[r][c] = TILES.WALL;
+                }
+            } else { 
+                grid = Array(rows).fill(0).map(() => Array(cols).fill(TILES.WALL));
+                const stack = [[1, 1]]; grid[1][1] = TILES.EMPTY;
+                while (stack.length > 0) {
+                    const [r, c] = stack[stack.length - 1];
+                    const neighbors = [[0,2],[0,-2],[2,0],[-2,0]].map(([dr,dc])=>[r+dr,c+dc])
+                        .filter(([nr,nc])=>nr>0&&nr<rows-1&&nc>0&&nc<cols-1&&grid[nr][nc]===TILES.WALL);
+                    if (neighbors.length>0) {
+                        const [nr,nc]=neighbors[Math.floor(Math.random()*neighbors.length)];
+                        grid[r+(nr-r)/2][c+(nc-c)/2]=TILES.EMPTY; grid[nr][nc]=TILES.EMPTY;
+                        stack.push([nr, nc]);
+                    } else stack.pop();
+                }
+                const wallsToRemove = Math.floor((rows * cols) * loopChance);
+                for(let i=0; i < wallsToRemove; i++) {
+                    const r=Math.floor(Math.random()*(rows-2))+1, c=Math.floor(Math.random()*(cols-2))+1;
+                    if(grid[r][c]===TILES.WALL) grid[r][c]=TILES.EMPTY;
+                }
+            }
+
+            grid[1][1] = TILES.START; grid[rows-2][cols-2] = TILES.EXIT;
+            if (!isSafePathPossible(grid, [1,1], [rows-2,cols-2])) continue;
+
+            let emptyCells = [];
+            for (let r=1; r<rows-1; r++) for (let c=1; c<cols-1; c++) 
+                if (grid[r][c]===TILES.EMPTY) emptyCells.push([r, c]);
+            
+            for (let i=0; i<baseCoinCount && emptyCells.length>0; i++) {
+                const idx = Math.floor(Math.random()*emptyCells.length);
+                const [r,c]=emptyCells.splice(idx,1)[0];
+                grid[r][c] = TILES.COIN;
+            }
+
+            let placedTraps = 0, trapAttempts = 0;
+            while (placedTraps < baseTrapCount && emptyCells.length > 0 && trapAttempts < 25) {
+                trapAttempts++;
+                const idx = Math.floor(Math.random()*emptyCells.length);
+                const [r,c] = emptyCells[idx];
+                grid[r][c] = TILES.TRAP;
+                if (isSafePathPossible(grid, [1,1], [rows-2,cols-2])) {
+                    placedTraps++;
+                    emptyCells.splice(idx, 1);
+                } else {
+                    grid[r][c] = TILES.EMPTY; 
+                }
+            }
+
+            traps.length = 0;
+            for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) if (grid[r][c] === TILES.TRAP) traps.push({r,c});
+            return grid;
+        }
+    }
+
+    // --- REAL-TIME DIFFICULTY ADJUSTMENT (DYNAMIC MODE) ---
+    function checkDynamicPerformance() {
+        if (gameState !== 'running' || mercyTriggered || envMode !== 'dynamic') return;
+        const elapsedTime = (Date.now() - startTime) / 1000;
+        
+        // Mercy Rule: Trigger if > 1 minute (60s)
+        if (elapsedTime > 60) {
+            triggerMercyRule();
+        }
+    }
+
+    function triggerMercyRule() {
+        mercyTriggered = true;
+        actionStat.textContent = 'AI: Helping!';
+        
+        // Remove random walls to open paths
+        let obstaclesRemoved = 0;
+        for(let r=1; r<MAZE_SIZE-1; r++) {
+            for(let c=1; c<MAZE_SIZE-1; c++) {
+                if(maze[r][c] === TILES.WALL && Math.random() < 0.20) { // Increased chance to remove wall
+                    maze[r][c] = TILES.EMPTY;
+                    if(gameMode === 'explorer') aiMemoryGrid[r][c] = TILES.EMPTY;
+                    obstaclesRemoved++;
+                }
+            }
+        }
+        
+        // Remove 50% of traps if any exist
+        if(traps.length > 0) {
+             for(let i = 0; i < traps.length; i++) {
+                if(Math.random() < 0.5) {
+                    maze[traps[i].r][traps[i].c] = TILES.EMPTY;
+                    if(gameMode === 'explorer') aiMemoryGrid[traps[i].r][traps[i].c] = TILES.EMPTY;
+                }
+            }
+            traps = traps.filter(t => maze[t.r][t.c] === TILES.TRAP);
+            trapsStat.textContent = traps.length;
+        }
+        
+        gsap.to('#game-area', {borderColor: '#34d399', duration: 0.5, yoyo: true, repeat: 1, onComplete: () => gsap.set('#game-area', {borderColor: 'rgba(71,85,105,.35)'})});
+    }
+
+    // --- DYNAMIC SHIFTING WITH BRIDGE BUILDER ---
+    async function shiftMaze() {
+        actionStat.textContent = 'Shifting...';
+        
+        // If 1 min passed, don't shift anymore, just help
+        const elapsedTime = (Date.now() - startTime) / 1000;
+        if (elapsedTime > 60) {
+            if(!mercyTriggered) triggerMercyRule();
+            return;
+        }
+
+        let path = await findPathAStar(maze, player_pos, [MAZE_SIZE-2, MAZE_SIZE-2]);
+        if (!path || path.length < 5) {
+            actionStat.textContent = 'Stabilized'; 
+            return;
+        }
+
+        const blockIndex = Math.floor(Math.random() * (path.length - 4)) + 2;
+        const [br, bc] = path[blockIndex];
+
+        if (maze[br][bc] !== TILES.EMPTY) return; 
+
+        maze[br][bc] = TILES.WALL;
+
+        if (!isSafePathPossible(maze, player_pos, [MAZE_SIZE-2, MAZE_SIZE-2])) {
+            actionStat.textContent = 'Rerouting...';
+            const reachableFromStart = getReachableSet(maze, player_pos);
+            const reachableFromEnd = getReachableSet(maze, [MAZE_SIZE-2, MAZE_SIZE-2]);
+
+            let candidates = [];
+            for (let r = 1; r < MAZE_SIZE - 1; r++) {
+                for (let c = 1; c < MAZE_SIZE - 1; c++) {
+                    if (maze[r][c] === TILES.WALL && (r!==br || c!==bc)) {
+                        let touchesStart = false, touchesEnd = false;
+                        [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr, dc]) => {
+                             if (reachableFromStart.has(`${r+dr},${c+dc}`)) touchesStart = true;
+                             if (reachableFromEnd.has(`${r+dr},${c+dc}`)) touchesEnd = true;
+                        });
+                        if (touchesStart && touchesEnd) candidates.push({r,c});
+                    }
+                }
+            }
+
+            if (candidates.length > 0) {
+                const bridge = candidates[Math.floor(Math.random() * candidates.length)];
+                maze[bridge.r][bridge.c] = TILES.EMPTY; 
+                gsap.fromTo('#game-area', {borderColor: '#ef4444'}, {borderColor: 'rgba(71,85,105,.35)', duration: 0.5});
+            } else {
+                maze[br][bc] = TILES.EMPTY; 
+                actionStat.textContent = 'Shift Failed';
+            }
+        }
+        
+        setTimeout(() => actionStat.textContent = gameMode==='human'?'Exploring':'Running...', 800);
+    }
+
+    // --- VISUALS ---
+    function showPage(pageId) { [loginPage, instructionsPage, gamePage].forEach(p => p.classList.add('hidden')); document.getElementById(pageId).classList.remove('hidden'); }
+    function startBackground() { let bgAnimId; function loop(){ const ctx=bgCanvas.getContext('2d'); ctx.clearRect(0,0,bgCanvas.width,bgCanvas.height); ctx.fillStyle='#071126'; ctx.fillRect(0,0,bgCanvas.width,bgCanvas.height); const time=Date.now()/1000; ctx.globalAlpha=0.12; ctx.fillStyle='#183047'; for(let i=0;i<50;i++){const x=(Math.sin(time*0.3+i)*0.5+0.5)*(bgCanvas.width+200)-100;const y=(i*47)%bgCanvas.height;ctx.fillRect(x,y,2,2);} ctx.globalAlpha=1; bgAnimId=requestAnimationFrame(loop); } cancelAnimationFrame(bgAnimId); bgAnimId=requestAnimationFrame(loop); }
+    function initCanvasSize() { CELL=parseInt(pixelScale.value,10); gameCanvas.width=MAZE_SIZE*CELL; gameCanvas.height=MAZE_SIZE*CELL; gameCtx.imageSmoothingEnabled=false; visibilityGrid=Array(MAZE_SIZE).fill(0).map(()=>Array(MAZE_SIZE).fill(!isFog)); updateVisibility(); drawGame(); }
+    
+    function drawGame() { 
+        gameCtx.clearRect(0,0,gameCanvas.width,gameCanvas.height); 
+        for(let r=0; r<MAZE_SIZE; r++) for(let c=0; c<MAZE_SIZE; c++){ 
+            const x=c*CELL, y=r*CELL; const val=maze[r][c]; 
+            if(isFog&&!visibilityGrid[r][c]){gameCtx.fillStyle='#071127'; gameCtx.fillRect(x,y,CELL,CELL); continue;} 
+            switch(val){ 
+                case TILES.WALL: 
+                    const grad=gameCtx.createLinearGradient(x,y,x+CELL,y+CELL); grad.addColorStop(0,'#374151'); grad.addColorStop(1,'#0f172a'); gameCtx.fillStyle=grad; gameCtx.fillRect(x,y,CELL,CELL); gameCtx.fillStyle='rgba(255,255,255,0.03)'; gameCtx.fillRect(x,y,CELL,3); break; 
+                case TILES.EXIT: 
+                    const blink=Math.floor(Date.now()/300)%2===0; gameCtx.fillStyle=blink?'#e2e8f0':'#9ca3af'; gameCtx.fillRect(x,y,CELL,CELL); gameCtx.strokeStyle='#0ea5e9'; gameCtx.strokeRect(x+2,y+2,CELL-4,CELL-4); break; 
+                case TILES.COIN: 
+                    gameCtx.fillStyle='#f59e0b'; gameCtx.beginPath(); gameCtx.arc(x+CELL/2,y+CELL/2,CELL*0.3,0,Math.PI*2); gameCtx.fill(); break; 
+                case TILES.TRAP: 
+                    const radius=CELL*(0.3+Math.sin(Date.now()/150)*0.05); gameCtx.fillStyle="rgba(239,68,68,0.8)"; gameCtx.beginPath(); gameCtx.arc(x+CELL/2,y+CELL/2,radius,0,Math.PI*2); gameCtx.fill(); break; 
+                case TILES.START: 
+                    gameCtx.fillStyle='#0ea5e9'; gameCtx.fillRect(x,y,CELL,CELL); break; 
+                default: 
+                    gameCtx.fillStyle='#071127'; gameCtx.fillRect(x,y,CELL,CELL); gameCtx.strokeStyle='rgba(255,255,255,0.02)'; gameCtx.strokeRect(x,y,CELL,CELL); break; 
+            } 
+        } 
+        if(gameMode==='solver'&&solvedPath.length>0){
+            gameCtx.strokeStyle='rgba(56,189,248,0.3)'; gameCtx.lineWidth=CELL*0.3; gameCtx.lineCap='round'; gameCtx.lineJoin='round'; gameCtx.beginPath(); 
+            gameCtx.moveTo(solvedPath[0][1]*CELL+CELL/2,solvedPath[0][0]*CELL+CELL/2); 
+            for(let i=1;i<solvedPath.length;i++){gameCtx.lineTo(solvedPath[i][1]*CELL+CELL/2,solvedPath[i][0]*CELL+CELL/2);} gameCtx.stroke();
+        } 
+        const px=player_pos[1]*CELL, py=player_pos[0]*CELL; 
+        if(playerImage){const scale=1.4, size=CELL*scale, offset=(size-CELL)/2; gameCtx.drawImage(playerImage,px-offset,py-offset,size,size);} 
+        else {gameCtx.fillStyle='#22d3ee'; gameCtx.fillRect(px+2,py+2,CELL-4,CELL-4);} 
+    }
+    
+    function updateVisibility() { if(!isFog) return; const view=3; visibilityGrid.forEach(row=>row.fill(false)); for(let dr=-view;dr<=view;dr++) for(let dc=-view;dc<=view;dc++){const nr=player_pos[0]+dr, nc=player_pos[1]+dc; if(nr>=0&&nr<MAZE_SIZE&&nc>=0&&nc<MAZE_SIZE&&Math.abs(dr)+Math.abs(dc)<=view)visibilityGrid[nr][nc]=true;} }
+
+    // --- INTELLIGENT AI EXPLORER AGENT (FRONTIER + DEAD END LEARNING) ---
+    async function moveAgent(){ 
+        const [r, c]=player_pos; 
+        
+        // 1. Update Visit Count & Dead End Detection
+        if(!aiVisitCounts[r]) aiVisitCounts[r] = [];
+        aiVisitCounts[r][c] = (aiVisitCounts[r][c] || 0) + 1;
+
+        // Detect if current spot is now a dead end (3 walls/traps around)
+        // If so, mark as virtual wall so we don't come back
+        let walls = 0;
+        for(const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]){
+            const nr=r+dr, nc=c+dc;
+            if(nr>=0 && nr<MAZE_SIZE && nc>=0 && nc<MAZE_SIZE){
+                const t = aiMemoryGrid[nr][nc];
+                if(t === TILES.WALL || t === TILES.TRAP) walls++;
+            } else {
+                walls++; 
+            }
+        }
+        if(walls >= 3 && (r!==1 || c!==1) && maze[r][c]!==TILES.EXIT) {
+            aiMemoryGrid[r][c] = TILES.WALL; // Mark as learned dead end
+        }
+
+        // 2. Scan Surroundings
+        for(const [dr, dc] of [[0,0],[0,1],[0,-1],[1,0],[-1,0]]){
+            const nr=r+dr, nc=c+dc; 
+            if(nr>=0&&nr<MAZE_SIZE&&nc>=0&&nc<MAZE_SIZE){
+                if (aiMemoryGrid[nr][nc] !== TILES.TRAP) aiMemoryGrid[nr][nc] = maze[nr][nc]; 
+                if(maze[nr][nc]===TILES.EXIT) aiTarget=[nr, nc];
+            }
+        } 
+
+        let aiPath=null; 
+        // 3. Priority: Exit Visible?
+        if(aiTarget){
+            actionStat.textContent='Targeting Exit...'; 
+            aiPath=await findPathAStar(aiMemoryGrid, player_pos, aiTarget, true); 
+        }
+
+        // 4. Priority: Exploration
+        if(!aiPath){
+            actionStat.textContent='Exploring...'; 
+            let unknowns = [];
+            for(let i=1;i<MAZE_SIZE-1;i++) for(let j=1;j<MAZE_SIZE-1;j++) {
+                if(aiMemoryGrid[i][j]===null) {
+                     let adjacentToKnown = false;
+                     for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]){
+                         const nr=i+dr, nc=j+dc;
+                         if(aiMemoryGrid[nr][nc] !== null && aiMemoryGrid[nr][nc] !== TILES.WALL && aiMemoryGrid[nr][nc] !== TILES.TRAP) {
+                             adjacentToKnown = true; break;
+                         }
+                     }
+                     if(adjacentToKnown) {
+                         const distToPlayer = Math.abs(i-player_pos[0])+Math.abs(j-player_pos[1]);
+                         const distToGoal = Math.abs(i-(MAZE_SIZE-2))+Math.abs(j-(MAZE_SIZE-2));
+                         unknowns.push({r:i, c:j, score: distToPlayer + (distToGoal * 0.5)});
+                     }
+                }
+            }
+            if(unknowns.length>0){
+                unknowns.sort((a,b)=>a.score-b.score);
+                for(let k=0; k<Math.min(3, unknowns.length); k++) {
+                    aiPath = await findPathAStar(aiMemoryGrid, player_pos, [unknowns[k].r, unknowns[k].c], true, true);
+                    if(aiPath) break;
+                }
+            }
+        }
+
+        // 5. Move
+        if(aiPath && aiPath.length > 1) return aiPath[1]; 
+
+        // 6. Fallback: Intelligent Backtrack (Lowest Visit Count)
+        let bestBacktrack = null;
+        let minVisits = Infinity;
+
+        for(const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]){
+            const nr = r+dr, nc = c+dc;
+            if(nr>=0 && nr<MAZE_SIZE && nc>=0 && nc<MAZE_SIZE){
+                 const t = aiMemoryGrid[nr][nc];
+                 if(t !== TILES.WALL && t !== TILES.TRAP && t !== null) {
+                     const visits = (aiVisitCounts[nr] && aiVisitCounts[nr][nc]) || 0;
+                     if(visits < minVisits) {
+                         minVisits = visits;
+                         bestBacktrack = [nr, nc];
+                     }
+                 }
+            }
+        }
+        
+        if(bestBacktrack) return bestBacktrack;
+
+        actionStat.textContent='Stuck!';
+        return null; 
+    }
+
+    let lastMoveTime = 0;
+    async function processMovement() {
+        if(gameState!=='running'||Date.now()-lastMoveTime<120)return; 
+        
+        // CHECK DYNAMIC DIFFICULTY EACH MOVE
+        checkDynamicPerformance();
+
+        let dx=0,dy=0;
+        if(gameMode==='human'){if(keysPressed.ArrowUp)dy=-1;else if(keysPressed.ArrowDown)dy=1;else if(keysPressed.ArrowLeft)dx=-1;else if(keysPressed.ArrowRight)dx=1;}
+        else if(gameMode==='solver'){if(pathIndex<solvedPath.length){const [nextR,nextC]=solvedPath[pathIndex];dy=nextR-player_pos[0];dx=nextC-player_pos[1];pathIndex++;}}
+        else if(gameMode==='explorer'){const nextStep=await moveAgent();if(nextStep){dy=nextStep[0]-player_pos[0];dx=nextStep[1]-player_pos[1];}}
+        
+        if(dx===0&&dy===0)return; 
+        lastMoveTime=Date.now();
+        
+        const newR=player_pos[0]+dy, newC=player_pos[1]+dx; 
+        const targetTile=maze[newR]&&maze[newR][newC];
+        
+        if(targetTile!==undefined && targetTile!==TILES.WALL){
+            player_pos=[newR,newC];
+            moves++; movesUntilShift--;
+            
+            if(gameMode==='explorer'){aiMemoryGrid[newR][newC] = targetTile;} 
+            
+            if(targetTile===TILES.COIN){coinsCollected++;maze[newR][newC]=TILES.EMPTY;} 
+            
+            if(targetTile===TILES.TRAP){
+                trapFalls++;
+                if(gameMode==='explorer'){
+                    actionStat.textContent='TRAP!';
+                    aiMemoryGrid[newR][newC] = TILES.TRAP; 
+                    player_pos=[1,1]; 
+                } else {
+                    player_pos=[1,1];
+                }
+                gsap.to('#game-area', {backgroundColor: 'rgba(239,68,68,0.2)', duration: 0.1, yoyo: true, repeat: 1, onComplete: ()=>gsap.set('#game-area', {backgroundColor: 'var(--card-bg)'})});
+            } 
+            
+            if(targetTile===TILES.EXIT){handleWin();return;} 
+            
+            if(envMode==='dynamic' && movesUntilShift<=0 && gameMode!=='solver'){
+                await shiftMaze();
+                movesUntilShift=currentShiftInterval;
+            } 
+            updateVisibility();
+        } else {
+            if(targetTile===TILES.WALL) wallCollisions++; 
+            if(gameMode==='human') gsap.fromTo('#game-area',{x:0},{x:6,duration:0.06,yoyo:true,repeat:3,onComplete:()=>gsap.set('#game-area',{x:0})}); 
+            else if(gameMode==='explorer' && targetTile===TILES.WALL) aiMemoryGrid[newR][newC]=TILES.WALL;
+        }
+    }
+
+    async function gameLoop(){
+        if(gameState!=='running')return; 
+        await processMovement();
+        drawGame(); 
+        levelStat.textContent=level;
+        timeStat.textContent=`${Math.floor((Date.now()-startTime)/1000)}s`; 
+        movesStat.textContent=moves;
+        shiftsStat.textContent=movesUntilShift;
+        trapsStat.textContent=traps.length;
+        coinsStat.textContent=coinsCollected; 
+        difficultyStat.textContent=difficultyNames[difficultyLevel] + (mercyTriggered ? " (Mercy)" : ""); 
+        animationFrameId=requestAnimationFrame(gameLoop);
+    }
+
+    // --- GAME STATE MANAGEMENT & DIFFICULTY ADJUSTMENT ---
+    function handleWin(){ 
+        gameState='stopped'; setControlsEnabled(true); 
+        const playerTime=(Date.now()-startTime)/1000; 
+        
+        // 1. Calculate Performance State (0=Fast/Easy, 1=Medium, 2=Slow/Hard)
+        const state=evaluatePerformance(playerTime); 
+        
+        // 2. AI Chooses Action based on State (FORCED PROGRESSION)
+        // If Fast (0) -> Increase Diff (0)
+        // If Slow (2) -> Decrease Diff (2)
+        // Else -> Keep (1)
+        let actionIndex = 1;
+        if (state === 0) actionIndex = 0; 
+        else if (state === 2) actionIndex = 2;
+
+        // 3. Update Q-Table (Reinforcement for internal memory)
+        updateQ(prev_state,prev_action,state, 1.0);
+        updateQTableDisplay(); 
+        
+        prev_state=state; prev_action=actionIndex; saveQTable(); 
+        
+        level++; 
+        actionStat.textContent=`Level ${level-1} Complete!`; 
+        setTimeout(()=>resetAndStartLevel(actionIndex),1500); 
+    }
+
+    async function resetAndStartLevel(actionIndex=null){
+        setControlsEnabled(true);
+        if(envMode==='static') shiftsStatWrapper.classList.add('hidden'); else shiftsStatWrapper.classList.remove('hidden');
+        
+        if(actionIndex !== null){
+            const actionName = AI_ACTIONS[actionIndex];
+            actionStat.textContent = `AI: ${actionName} Difficulty`;
+            
+            // STRICT DIFFICULTY ENFORCEMENT: Adjusts based on PREVIOUS level performance
+            if(actionIndex === 0) { // Win Too Fast -> Increase
+                difficultyLevel = Math.min(2, difficultyLevel + 1);
+            } else if (actionIndex === 2) { // Win Too Slow -> Decrease
+                difficultyLevel = Math.max(0, difficultyLevel - 1);
+            }
+        } else {
+            actionStat.textContent = 'Generating...';
+        }
+
+        // --- RESET READINGS FOR NEW LEVEL ---
+        mercyTriggered = false;
+        moves = 0; coinsCollected = 0; wallCollisions = 0; trapFalls = 0;
+        
+        maze=generateMaze(MAZE_SIZE,MAZE_SIZE);
+        player_pos=[1,1]; startTime=Date.now(); movesUntilShift=currentShiftInterval;
+        visibilityGrid=Array(MAZE_SIZE).fill(0).map(()=>Array(MAZE_SIZE).fill(!isFog)); updateVisibility();
+        
+        // Reset AI Explorer Memory completely for new level
+        aiMemoryGrid=Array(MAZE_SIZE).fill(0).map(()=>Array(MAZE_SIZE).fill(null)); 
+        aiVisitCounts=[]; // Reset visit counts
+        for(let i=0; i<MAZE_SIZE; i++) aiVisitCounts[i] = []; // Initialize 2D array
+        aiTarget=null; 
+        
+        solvedPath=[]; pathIndex=0;
+        if(gameMode==='solver'){ 
+            actionStat.textContent='Calculating Path...'; 
+            solvedPath=await findPathAStar(maze, [1,1], [MAZE_SIZE-2, MAZE_SIZE-2])||[]; 
+            actionStat.textContent=solvedPath.length>0 ? 'Executing Path' : 'No Path Found'; 
+        } else { 
+            actionStat.textContent = gameMode==='human' ? 'Exploring' : 'Running...'; 
+        }
+        
+        initCanvasSize(); gameState='running';
+        if(animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId=requestAnimationFrame(gameLoop);
+    }
+
+    function togglePause(){
+        if(gameState==='running'){gameState='paused';timePaused=Date.now();cancelAnimationFrame(animationFrameId);pauseOverlay.classList.remove('hidden');pauseBtn.textContent='Resume';}
+        else if(gameState==='paused'){gameState='running';startTime+=(Date.now()-timePaused);pauseOverlay.classList.add('hidden');pauseBtn.textContent='Pause';animationFrameId=requestAnimationFrame(gameLoop);}
+    }
+    
+    function loadAssets(callback){let assetsLoaded=0;const totalAssets=1;const img=new Image();img.src='pc.png';img.onload=()=>{assetsLoaded++;playerImage=img;if(assetsLoaded>=totalAssets)callback();};img.onerror=()=>{console.error("Failed to load 'pc.png'. Using fallback.");assetsLoaded++;if(assetsLoaded>=totalAssets)callback();};}
+
+    // --- EVENT LISTENERS ---
+    function setupEventListeners() {
+        loginButton.addEventListener('click',()=>showPage('instructions-page'));
+        startGameButton.addEventListener('click',()=>{showPage('game-page');level=1;difficultyLevel=1;currentShiftInterval=DEFAULT_SHIFT_INTERVAL;loadQTable();updateQTableDisplay();resetAndStartLevel();});
+        menuBtn.addEventListener('click',()=>{gameState='stopped';cancelAnimationFrame(animationFrameId);setControlsEnabled(true);showPage('login-page');});
+        pauseBtn.addEventListener('click',togglePause);
+        pauseOverlay.addEventListener('click',togglePause);
+        resetAiBtn.addEventListener('click',resetQTable);
+        function handleModeChange(){setControlsEnabled(true);level=1;difficultyLevel=1;currentShiftInterval=DEFAULT_SHIFT_INTERVAL;resetAndStartLevel();}
+        gameModeSelect.addEventListener('change',(e)=>{gameMode=e.target.value;handleModeChange();});
+        mazeTypeSelect.addEventListener('change',(e)=>{mazeType=e.target.value;handleModeChange();});
+        envModeSelect.addEventListener('change',(e)=>{envMode=e.target.value;handleModeChange();});
+        fogToggle.addEventListener('change',(e)=>{isFog=e.target.checked;visibilityGrid=Array(MAZE_SIZE).fill(0).map(()=>Array(MAZE_SIZE).fill(!isFog));updateVisibility();drawGame();});
+        pixelScale.addEventListener('input',(e)=>{pixelSizeValue.textContent=`${e.target.value}px`;initCanvasSize();});
+        window.addEventListener('keydown',(e)=>{if(keysPressed.hasOwnProperty(e.key)){keysPressed[e.key]=true;e.preventDefault();}if(e.key==='Escape')togglePause();});
+        window.addEventListener('keyup',(e)=>{if(keysPressed.hasOwnProperty(e.key)){keysPressed[e.key]=false;e.preventDefault();}});
+        window.addEventListener('resize',()=>{bgCanvas.width=window.innerWidth;bgCanvas.height=window.innerHeight;if(gameState!=='stopped')initCanvasSize();});
+    }
+
+    // --- INITIALIZATION ---
+    function initializeGame(){showPage('login-page');bgCanvas.width=window.innerWidth;bgCanvas.height=window.innerHeight;startBackground();setupEventListeners();}
+    
+    loadAssets(initializeGame);
+});
+</script>
+</body>
+</html>
